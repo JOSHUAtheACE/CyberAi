@@ -241,6 +241,116 @@ export function scatterOption({
   } as EChartsOption;
 }
 
+export function radarOption({
+  indicators,
+  series,
+  max = 1,
+  splitNumber = 4,
+  legend = true,
+}: {
+  indicators: { name: string; max?: number }[];
+  series: { name: string; values: number[]; color?: string }[];
+  max?: number;
+  splitNumber?: number;
+  legend?: boolean;
+}): EChartsOption {
+  return {
+    animationDuration: 460,
+    tooltip: { trigger: "item" },
+    legend: legend && series.length > 1 ? { show: true, top: 0, right: 4 } : { show: false },
+    radar: {
+      indicator: indicators.map((indicator) => ({ name: indicator.name, max: indicator.max ?? max })),
+      radius: legend && series.length > 1 ? "62%" : "70%",
+      center: ["50%", legend && series.length > 1 ? "56%" : "52%"],
+      splitNumber,
+      shape: "polygon",
+      axisName: { color: chartPalette.axis, fontSize: 9.5 },
+      splitLine: { lineStyle: { color: "rgba(148,163,184,0.12)" } },
+      splitArea: {
+        areaStyle: { color: ["rgba(148,163,184,0.015)", "rgba(148,163,184,0.04)"] },
+      },
+      axisLine: { lineStyle: { color: "rgba(148,163,184,0.14)" } },
+    },
+    series: [
+      {
+        type: "radar",
+        symbolSize: 3.5,
+        data: series.map((item, index) => {
+          const color = item.color ?? paletteCycle[index % paletteCycle.length];
+          return {
+            name: item.name,
+            value: item.values,
+            lineStyle: { width: 1.6, color },
+            itemStyle: { color },
+            areaStyle: { color: `${color}2e` },
+          };
+        }),
+      },
+    ],
+  } as EChartsOption;
+}
+
+export function gaugeOption({
+  value,
+  max = 1,
+  name,
+  color = chartPalette.accent,
+  formatter,
+  startAngle = 220,
+  endAngle = -40,
+  detailSize = 24,
+}: {
+  value: number;
+  max?: number;
+  name?: string;
+  color?: string;
+  formatter?: (value: number) => string;
+  startAngle?: number;
+  endAngle?: number;
+  detailSize?: number;
+}): EChartsOption {
+  const safeMax = max > 0 ? max : 1;
+  return {
+    animationDuration: 520,
+    series: [
+      {
+        type: "gauge",
+        startAngle,
+        endAngle,
+        min: 0,
+        max: safeMax,
+        radius: "92%",
+        center: ["50%", "58%"],
+        progress: { show: true, width: 9, roundCap: true, itemStyle: { color } },
+        axisLine: {
+          roundCap: true,
+          lineStyle: {
+            width: 9,
+            color: [[1, "rgba(148,163,184,0.10)"]],
+          },
+        },
+        pointer: { show: false },
+        axisTick: { show: false },
+        splitLine: { show: false },
+        axisLabel: { show: false },
+        anchor: { show: false },
+        title: name
+          ? { show: true, offsetCenter: [0, "34%"], color: chartPalette.axis, fontSize: 9.5 }
+          : { show: false },
+        detail: {
+          valueAnimation: true,
+          offsetCenter: [0, name ? "-6%" : "0%"],
+          color: "#dbe6f5",
+          fontSize: detailSize,
+          fontFamily: "JetBrains Mono, ui-monospace, monospace",
+          formatter: (raw: number) => (formatter ? formatter(raw) : raw.toFixed(2)),
+        },
+        data: [{ value, name }],
+      },
+    ],
+  } as EChartsOption;
+}
+
 export function shortBucket(label: string): string {
   const parsed = new Date(label);
   if (Number.isNaN(parsed.getTime())) return label;

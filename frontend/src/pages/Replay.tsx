@@ -29,7 +29,7 @@ import {
   Skeleton,
   StatusBadge,
 } from "@/components/ui";
-import { SummaryStrip } from "@/components/app";
+import { Ring, SparkKpi, TONES } from "@/components/visuals";
 import { useToast } from "@/context/ToastContext";
 import { api } from "@/lib/api";
 import { cn, formatNumber, relativeTime, titleCase } from "@/lib/format";
@@ -308,14 +308,36 @@ export function Replay() {
         actions={<Badge tone="amber" dot>DEMO-labelled scenarios</Badge>}
       />
 
-      <SummaryStrip
-        items={[
-          { label: "Sessions", value: formatNumber(sessionItems.length) },
-          { label: "Running", value: formatNumber(sessionItems.filter((item) => item.status === "RUNNING").length), tone: "accent" },
-          { label: "Alerts generated", value: formatNumber(totalAlerts) },
-          { label: "Speeds", value: (datasets.data?.speeds ?? [0.5, 1, 2, 5]).map((value) => `${value}×`).join(" · ") },
-        ]}
-      />
+      <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-4">
+        <SparkKpi
+          label="Sessions"
+          value={formatNumber(sessionItems.length)}
+          icon={History}
+          tone="blue"
+          footnote={`${sessionItems.filter((item) => item.status === "RUNNING").length} running · ${sessionItems.filter((item) => item.status === "PAUSED").length} paused`}
+        />
+        <SparkKpi
+          label="Datasets"
+          value={formatNumber((datasets.data?.demo_datasets.length ?? 0) + (datasets.data?.uploaded_datasets.length ?? 0))}
+          icon={Layers}
+          tone="violet"
+          footnote={`${datasets.data?.demo_datasets.length ?? 0} demo · ${datasets.data?.uploaded_datasets.length ?? 0} uploaded`}
+        />
+        <SparkKpi
+          label="Alerts generated"
+          value={formatNumber(totalAlerts)}
+          icon={AlertTriangle}
+          tone="rose"
+          footnote="across listed sessions"
+        />
+        <SparkKpi
+          label="Replay speed"
+          value={`${speed}×`}
+          icon={Gauge}
+          tone="accent"
+          footnote={(datasets.data?.speeds ?? [0.5, 1, 2, 5]).map((value) => `${value}×`).join(" · ")}
+        />
+      </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.18fr)_minmax(0,1fr)]">
         <Panel className="p-4 sm:p-5">
@@ -520,33 +542,45 @@ export function Replay() {
             ) : (
               <>
                 <div className="mt-4 rounded-xl border border-white/[0.06] bg-ink-900/40 p-3.5">
-                  <div className="flex items-center justify-between gap-2 text-[11px]">
-                    <span className="text-slate-400">
-                      {formatNumber(current.records_processed)} / {formatNumber(current.total_records)} records
-                    </span>
-                    <span className="font-mono text-slate-500">{current.progress.toFixed(1)}%</span>
-                  </div>
-                  <div className="mt-2">
-                    <ProgressBar value={current.progress} tone={current.demo ? "accent" : "blue"} />
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-[10.5px] sm:grid-cols-4">
-                    <div>
-                      <p className="text-slate-600">Alerts</p>
-                      <p className="font-mono text-[13px] text-slate-200">{formatNumber(current.alerts_generated)}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-600">Remaining</p>
-                      <p className="font-mono text-[13px] text-slate-200">{formatNumber(current.remaining_records)}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-600">Rate</p>
-                      <p className="font-mono text-[13px] text-slate-200">{formatNumber(current.current_rate, 1)}/s</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-600">Lag</p>
-                      <p className="font-mono text-[13px] text-slate-200">
-                        {current.processing_latency_ms === null ? "—" : `${current.processing_latency_ms.toFixed(1)} ms`}
-                      </p>
+                  <div className="flex items-center gap-4">
+                    <Ring
+                      ratio={Math.max(0, Math.min(1, current.progress / 100))}
+                      display={`${current.progress.toFixed(0)}%`}
+                      caption="progress"
+                      color={current.demo ? TONES.accent : TONES.blue}
+                      size={74}
+                      thickness={6}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2 text-[11px]">
+                        <span className="min-w-0 truncate text-slate-400">
+                          {formatNumber(current.records_processed)} / {formatNumber(current.total_records)} records
+                        </span>
+                        <span className="shrink-0 font-mono text-slate-500">{current.progress.toFixed(1)}%</span>
+                      </div>
+                      <div className="mt-2">
+                        <ProgressBar value={current.progress} tone={current.demo ? "accent" : "blue"} />
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-[10.5px] sm:grid-cols-4">
+                        <div>
+                          <p className="text-slate-600">Alerts</p>
+                          <p className="font-mono text-[13px] text-slate-200">{formatNumber(current.alerts_generated)}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-600">Remaining</p>
+                          <p className="font-mono text-[13px] text-slate-200">{formatNumber(current.remaining_records)}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-600">Rate</p>
+                          <p className="font-mono text-[13px] text-slate-200">{formatNumber(current.current_rate, 1)}/s</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-600">Lag</p>
+                          <p className="font-mono text-[13px] text-slate-200">
+                            {current.processing_latency_ms === null ? "—" : `${current.processing_latency_ms.toFixed(1)} ms`}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/[0.05] pt-3">

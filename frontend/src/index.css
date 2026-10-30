@@ -175,6 +175,39 @@
       background-position: -80% 0;
     }
   }
+
+  .map-arc {
+    stroke-dasharray: 1.4 6;
+    animation: map-arc 7s linear infinite;
+  }
+
+  @keyframes map-arc {
+    to {
+      stroke-dashoffset: -14.8;
+    }
+  }
+
+  .map-node-pulse {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: map-node-pulse 3.6s ease-out infinite;
+    opacity: 0;
+  }
+
+  @keyframes map-node-pulse {
+    0% {
+      transform: scale(1);
+      opacity: 0.5;
+    }
+    70% {
+      transform: scale(3.2);
+      opacity: 0;
+    }
+    100% {
+      transform: scale(3.2);
+      opacity: 0;
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

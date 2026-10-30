@@ -2,17 +2,20 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCheck,
   Filter,
+  Flame,
   Inbox,
   Layers,
   RefreshCw,
   Search,
   ShieldAlert,
+  ShieldCheck,
   UserCheck,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTable, Pagination, SummaryStrip } from "@/components/app";
+import { AlertTable, Pagination } from "@/components/app";
 import {
   Badge,
   EmptyState,
@@ -20,9 +23,9 @@ import {
   InfoHint,
   Panel,
   PageHeader,
-  SectionTitle,
   Spinner,
 } from "@/components/ui";
+import { DonutCard, MeterList, RankList, TONES, severityColor } from "@/components/visuals";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { useWorkspace } from "@/context/WorkspaceContext";
@@ -32,6 +35,13 @@ import type { AlertMeta, AlertsListResponse } from "@/lib/types";
 
 const SEVERITIES = ["critical", "high", "medium", "low", "informational"];
 const STATUSES = ["OPEN", "ACKNOWLEDGED", "INVESTIGATING", "CLOSED", "FALSE_POSITIVE"];
+const STATUS_TONE: Record<string, "accent" | "blue" | "violet" | "slate" | "mint"> = {
+  OPEN: "accent",
+  ACKNOWLEDGED: "blue",
+  INVESTIGATING: "violet",
+  CLOSED: "slate",
+  FALSE_POSITIVE: "mint",
+};
 const SORTS = [
   { value: "first_seen", label: "First seen" },
   { value: "last_seen", label: "Last seen" },
@@ -55,9 +65,9 @@ function FilterSelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="flex min-w-[130px] flex-1 flex-col gap-1">
+    <label className="flex min-w-0 flex-1 flex-col gap-1">
       <span className="label">{label}</span>
-      <select className="field py-1.5" value={value} onChange={(event) => onChange(event.target.value)}>
+      <select className="field py-1.5 text-[11.5px]" value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">All</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -94,9 +104,67 @@ function FacetChip({
           : "border-white/[0.08] bg-white/[0.02] text-slate-400 hover:border-white/[0.16] hover:text-slate-200",
       )}
     >
-      {tone ? <span className={cn("h-1.5 w-1.5 rounded-full", tone)} /> : null}
+      {tone ? <span className={cn("h-1.5 w-1.5 rounded-full", tone)} style={tone.startsWith("#") ? { background: tone } : undefined} /> : null}
       {label}
       {count !== undefined ? <span className="font-mono text-[9.5px] text-slate-500">{formatNumber(count)}</span> : null}
+    </button>
+  );
+}
+
+function CountTile({
+  label,
+  value,
+  share,
+  tone,
+  icon: Icon,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  share: number;
+  tone: string;
+  icon: LucideIcon;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      disabled={!onClick}
+      className={cn(
+        "group relative overflow-hidden rounded-xl border p-3 text-left transition-colors disabled:cursor-default",
+        active
+          ? "border-accent/45 bg-accent/[0.06]"
+          : "border-white/[0.07] bg-ink-800/60 hover:border-white/[0.14]",
+      )}
+    >
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -right-6 -top-8 h-16 w-16 rounded-full opacity-[0.14] blur-2xl"
+        style={{ background: tone }}
+      />
+      <div className="flex items-start justify-between gap-1.5">
+        <p className="label min-w-0 truncate leading-tight">{label}</p>
+        <span
+          className="flex h-6 w-6 items-center justify-center rounded-md border"
+          style={{ background: `${tone}14`, borderColor: `${tone}2b`, color: tone }}
+        >
+          <Icon className="h-3 w-3" />
+        </span>
+      </div>
+      <p className="mt-2 font-mono text-[20px] font-medium leading-none tabular-nums text-slate-100">{formatNumber(value)}</p>
+      <div className="mt-2 flex items-center gap-1.5">
+        <span className="h-[3px] flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+          <span
+            className="block h-full rounded-full"
+            style={{ width: `${Math.max(2, Math.min(100, share * 100))}%`, background: tone, boxShadow: `0 0 6px ${tone}55` }}
+          />
+        </span>
+        <span className="font-mono text-[8.5px] tabular-nums text-slate-600">{Math.round(share * 100)}%</span>
+      </div>
     </button>
   );
 }
@@ -130,6 +198,11 @@ export function Alerts() {
     }
     if (resetPage) next.delete("page");
     setParams(next, { replace: true });
+  };
+
+  const clearAll = () => {
+    setSearch("");
+    setParams(new URLSearchParams(), { replace: true });
   };
 
   useEffect(() => {
@@ -198,6 +271,13 @@ export function Alerts() {
     return map;
   }, [facets?.statuses]);
 
+  const windowTotal = useMemo(
+    () => Object.values(severityCounts).reduce((sum, count) => sum + count, 0),
+    [severityCounts],
+  );
+  const matching = alerts.data?.total ?? 0;
+  const share = (count: number) => (windowTotal ? count / windowTotal : 0);
+
   const activeFilters = [
     ...severity.map((value) => ({ key: "severity" as const, value, label: titleCase(value) })),
     ...status.map((value) => ({ key: "status" as const, value, label: titleCase(value) })),
@@ -218,49 +298,144 @@ export function Alerts() {
       <PageHeader
         eyebrow="Alert centre"
         title="Evidence-backed alerts"
-        description="Every alert is derived from stored flows and carries the detector, score semantics, evidence features and a path to the underlying records. Severity expresses potential impact; confidence expresses detector certainty for that evidence."
+        description="Every alert is derived from stored flows. Severity expresses potential impact; confidence expresses detector certainty for that evidence."
         actions={
           <>
             <Badge tone={environment === "LIVE" ? "mint" : environment === "DEMO" ? "amber" : "blue"} dot>
               {environment}
             </Badge>
-            <Badge tone="slate">No active remediation</Badge>
+            <Badge tone="slate">passive · no remediation</Badge>
           </>
         }
       />
 
-      <SummaryStrip
-        items={[
-          { label: "Matching", value: formatNumber(alerts.data?.total ?? 0) },
-          { label: "Critical", value: formatNumber(severityCounts.critical ?? 0), tone: "danger" },
-          { label: "High", value: formatNumber(severityCounts.high ?? 0) },
-          { label: "Open", value: formatNumber(statusCounts.OPEN ?? 0), tone: "accent" },
-          { label: "Investigating", value: formatNumber(statusCounts.INVESTIGATING ?? 0) },
-          { label: "False positive", value: formatNumber(statusCounts.FALSE_POSITIVE ?? 0) },
-        ]}
-      />
-
-      <Panel className="mt-5 p-4 sm:p-5">
-        <SectionTitle
-          eyebrow="Filter"
-          title="Narrow the queue"
-          subtitle={`Window: ${alerts.data?.period.label ?? range}. Counts on the chips reflect the whole window, not only the current filter.`}
-          actions={
-            <button type="button" className="btn-secondary" onClick={() => void alerts.refetch()} disabled={alerts.isFetching}>
-              {alerts.isFetching ? <Spinner className="h-3.5 w-3.5" /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh
-            </button>
-          }
+      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-6">
+        <CountTile
+          label="Matching"
+          value={matching}
+          share={windowTotal ? matching / windowTotal : 1}
+          tone={TONES.accent}
+          icon={Layers}
+          active={!activeFilters.length}
+          onClick={clearAll}
         />
-        <div className="mt-4 flex flex-wrap items-end gap-2.5">
-          <label className="flex min-w-[220px] flex-1 flex-col gap-1">
+        <CountTile
+          label="Critical"
+          value={severityCounts.critical ?? 0}
+          share={share(severityCounts.critical ?? 0)}
+          tone={severityColor("critical")}
+          icon={ShieldAlert}
+          active={severity.includes("critical")}
+          onClick={() => toggleFacet("severity", "critical")}
+        />
+        <CountTile
+          label="High"
+          value={severityCounts.high ?? 0}
+          share={share(severityCounts.high ?? 0)}
+          tone={severityColor("high")}
+          icon={Flame}
+          active={severity.includes("high")}
+          onClick={() => toggleFacet("severity", "high")}
+        />
+        <CountTile
+          label="Open"
+          value={statusCounts.OPEN ?? 0}
+          share={share(statusCounts.OPEN ?? 0)}
+          tone={TONES.accent}
+          icon={Inbox}
+          active={status.includes("OPEN")}
+          onClick={() => toggleFacet("status", "OPEN")}
+        />
+        <CountTile
+          label="Investigating"
+          value={statusCounts.INVESTIGATING ?? 0}
+          share={share(statusCounts.INVESTIGATING ?? 0)}
+          tone={TONES.violet}
+          icon={Search}
+          active={status.includes("INVESTIGATING")}
+          onClick={() => toggleFacet("status", "INVESTIGATING")}
+        />
+        <CountTile
+          label="False positive"
+          value={statusCounts.FALSE_POSITIVE ?? 0}
+          share={share(statusCounts.FALSE_POSITIVE ?? 0)}
+          tone={TONES.mint}
+          icon={ShieldCheck}
+          active={status.includes("FALSE_POSITIVE")}
+          onClick={() => toggleFacet("status", "FALSE_POSITIVE")}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <DonutCard
+          title="Severity mix"
+          subtitle="Whole window · not the current filter"
+          items={SEVERITIES.map((value) => ({
+            name: titleCase(value),
+            value: severityCounts[value] ?? 0,
+            color: severityColor(value),
+          }))}
+          totalLabel="alerts"
+          height={138}
+          action={
+            severity.length ? (
+              <button type="button" className="text-[9.5px] text-slate-500 hover:text-slate-300" onClick={() => update({ severity: null })}>
+                clear
+              </button>
+            ) : null
+          }
+          emptyLabel="No alerts recorded in this window"
+        />
+        <MeterList
+          title="Workflow state"
+          subtitle="Whole window · investigation status"
+          rows={STATUSES.map((value) => ({
+            label: titleCase(value),
+            value: formatNumber(statusCounts[value] ?? 0),
+            ratio: windowTotal ? (statusCounts[value] ?? 0) / windowTotal : 0,
+            tone: STATUS_TONE[value],
+          }))}
+        />
+        <RankList
+          title="Detectors"
+          subtitle="Alerts per module · select to filter"
+          tone="violet"
+          rows={(facets?.detectors ?? []).slice(0, 6).map((item) => ({
+            label: item.value.replace(/_/g, " ").replace("detector", "").trim(),
+            value: item.count,
+            color: item.value === detector ? TONES.accent : TONES.violet,
+            onClick: () => update({ detector: item.value === detector ? null : item.value }),
+          }))}
+          emptyLabel="No detector activity in this window"
+        />
+      </div>
+
+      <Panel className="mt-4 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Filter className="h-3.5 w-3.5 text-slate-500" />
+            <h3 className="text-[12.5px] font-semibold tracking-tight text-slate-200">Filters</h3>
+            <span className="font-mono text-[10px] text-slate-500">{formatNumber(matching)} matching</span>
+            <span className="flex items-center gap-1">
+              <Badge tone="slate">{alerts.data?.period.label ?? range}</Badge>
+              <InfoHint text="Chip counts describe the whole selected window, not only the current filter. Filters never fabricate results: the table reflects exactly what is stored." />
+            </span>
+          </div>
+          <button type="button" className="btn-secondary px-2.5 py-1 text-[11px]" onClick={() => void alerts.refetch()} disabled={alerts.isFetching}>
+            {alerts.isFetching ? <Spinner className="h-3 w-3" /> : <RefreshCw className="h-3 w-3" />} Refresh
+          </button>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.7fr)_repeat(4,minmax(120px,1fr))]">
+          <label className="flex min-w-0 flex-col gap-1">
             <span className="label">Search</span>
             <span className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-600" />
               <input
-                className="field py-1.5 pl-8"
+                className="field py-1.5 pl-8 text-[11.5px]"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Alert code, IP, threat class or summary"
+                placeholder="Alert code, IP, class or summary"
                 maxLength={120}
               />
               {search ? (
@@ -306,18 +481,14 @@ export function Alerts() {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-white/[0.05] pt-3">
-          <span className="label mr-1 flex items-center gap-1">
-            <Filter className="h-3 w-3" /> Severity
-          </span>
+          <span className="label mr-1">Severity</span>
           {SEVERITIES.map((value) => (
             <FacetChip
               key={value}
               label={titleCase(value)}
               count={severityCounts[value] ?? 0}
               active={severity.includes(value)}
-              tone={
-                value === "critical" ? "bg-signal-rose" : value === "high" ? "bg-signal-amber" : value === "medium" ? "bg-signal-blue" : value === "low" ? "bg-signal-mint" : "bg-slate-500"
-              }
+              tone={severityColor(value)}
               onClick={() => toggleFacet("severity", value)}
             />
           ))}
@@ -333,14 +504,7 @@ export function Alerts() {
             />
           ))}
           {activeFilters.length ? (
-            <button
-              type="button"
-              className="ml-auto text-[10.5px] text-slate-500 hover:text-slate-300"
-              onClick={() => {
-                setSearch("");
-                setParams(new URLSearchParams(), { replace: true });
-              }}
-            >
+            <button type="button" className="ml-auto text-[10px] text-slate-500 hover:text-slate-300" onClick={clearAll}>
               Clear all filters
             </button>
           ) : null}
@@ -399,11 +563,12 @@ export function Alerts() {
       <Panel className="mt-4 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-3">
           <div className="flex items-center gap-2">
+            <ShieldAlert className="h-3.5 w-3.5 text-slate-500" />
             <h3 className="text-[12.5px] font-semibold text-slate-200">Alerts</h3>
-            <span className="font-mono text-[10.5px] text-slate-500">{formatNumber(alerts.data?.total ?? 0)} in window</span>
+            <span className="font-mono text-[10.5px] text-slate-500">{formatNumber(matching)} in window</span>
           </div>
           <span className="flex items-center gap-1 text-[10px] text-slate-600">
-            <Layers className="h-3 w-3" /> Deduplicated with recurrence counters
+            <Layers className="h-3 w-3" /> deduplicated with recurrence counters
             <InfoHint text={detectionsNote} label="About alert deduplication" />
           </span>
         </div>
@@ -435,17 +600,10 @@ export function Alerts() {
           <EmptyState
             compact
             title="No alerts match these filters"
-            description="Remove a filter or widen the time range. Filters never fabricate results: the table reflects exactly what is stored."
+            description="Remove a filter or widen the time range. Filters never fabricate results."
             icon={<Inbox className="h-4 w-4" />}
             action={
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => {
-                  setSearch("");
-                  setParams(new URLSearchParams(), { replace: true });
-                }}
-              >
+              <button type="button" className="btn-secondary" onClick={clearAll}>
                 Reset filters
               </button>
             }
@@ -453,22 +611,15 @@ export function Alerts() {
         </div>
       ) : null}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div className="flex items-start gap-2 rounded-lg border border-white/[0.06] bg-ink-900/30 px-3.5 py-2.5 text-[10.5px] leading-relaxed text-slate-600">
-          <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-500" />
-          <span>
-            SENTINEL AI is passive and read-only with respect to monitored infrastructure. Investigation actions — acknowledge,
-            assign, notes, status, false positive and export — update records inside the platform only. Nothing is blocked,
-            isolated or reconfigured.
-          </span>
-        </div>
-        <div className="flex items-start gap-2 rounded-lg border border-white/[0.06] bg-ink-900/30 px-3.5 py-2.5 text-[10.5px] leading-relaxed text-slate-600">
-          <Layers className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-500" />
-          <span>
-            A false-positive decision is retained with its author and timestamp for audit. It changes the investigation status
-            only; the underlying flows and evidence remain visible.
-          </span>
-        </div>
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10px] leading-relaxed text-slate-600">
+        <span className="flex items-center gap-1.5">
+          <ShieldAlert className="h-3 w-3 shrink-0 text-slate-500" />
+          Passive platform: acknowledge, assign, notes and status updates change platform records only — nothing is blocked or isolated.
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Layers className="h-3 w-3 shrink-0 text-slate-500" />
+          False-positive decisions retain author and timestamp for audit.
+        </span>
       </div>
     </div>
   );

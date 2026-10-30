@@ -13,7 +13,8 @@ import {
   Users,
 } from "lucide-react";
 import { useState } from "react";
-import { Pagination, SummaryStrip } from "@/components/app";
+import { Pagination } from "@/components/app";
+import { DonutCard, RankList, SparkKpi, TONES } from "@/components/visuals";
 import {
   Badge,
   EmptyState,
@@ -709,16 +710,24 @@ export function Admin() {
       ) : null}
 
       {overview ? (
-        <SummaryStrip
-          items={[
-            { label: "Users", value: overview.users.total },
-            { label: "Active", value: overview.users.active, tone: "accent" },
-            { label: "Disabled", value: overview.users.disabled, tone: overview.users.disabled ? "danger" : "default" },
-            { label: "Flows stored", value: formatNumber(overview.records.flows) },
-            { label: "Alerts stored", value: formatNumber(overview.records.alerts) },
-            { label: "Audit events", value: formatNumber(overview.audit_events) },
-          ]}
-        />
+        <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-4">
+          <SparkKpi
+            label="Accounts"
+            value={formatNumber(overview.users.total)}
+            icon={Users}
+            tone="blue"
+            footnote={`${overview.users.active} active · ${overview.users.disabled} disabled`}
+          />
+          <SparkKpi label="Flows stored" value={formatNumber(overview.records.flows)} icon={Database} tone="accent" footnote="telemetry records" />
+          <SparkKpi
+            label="Alerts stored"
+            value={formatNumber(overview.records.alerts)}
+            icon={ShieldCheck}
+            tone="rose"
+            footnote="investigation records"
+          />
+          <SparkKpi label="Audit events" value={formatNumber(overview.audit_events)} icon={Activity} tone="violet" footnote="immutable trail" />
+        </div>
       ) : null}
 
       <Tabs tabs={tabs} value={tab} onChange={(value) => setTab(value as TabKey)} />
@@ -758,26 +767,33 @@ export function Admin() {
               )}
             </Panel>
             <div className="space-y-4">
-              <Panel className="p-4">
-                <SectionTitle eyebrow="Records" title="Stored data" />
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <Stat label="Flows" value={formatNumber(overview.records.flows)} icon={<Database className="h-3.5 w-3.5" />} />
-                  <Stat label="Alerts" value={formatNumber(overview.records.alerts)} icon={<ShieldCheck className="h-3.5 w-3.5" />} />
-                  <Stat label="Reports" value={formatNumber(overview.records.reports)} />
-                  <Stat label="Replay sessions" value={formatNumber(overview.records.replay_sessions)} />
-                </div>
-              </Panel>
-              <Panel className="p-4">
-                <SectionTitle eyebrow="Accounts" title="Access overview" />
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <Stat label="Active" value={overview.users.active} icon={<Users className="h-3.5 w-3.5" />} />
-                  <Stat label="Disabled" value={overview.users.disabled} tone={overview.users.disabled ? "danger" : "default"} />
-                </div>
-                <p className="mt-3 flex items-start gap-1.5 text-[10.5px] leading-relaxed text-slate-500">
-                  <KeyRound className="mt-0.5 h-3 w-3 shrink-0" />
-                  Passwords use scrypt with a per-user salt. Sessions are signed server-side and validated on every request.
-                </p>
-              </Panel>
+              <DonutCard
+                title="Account status"
+                subtitle="Active versus disabled accounts"
+                items={[
+                  { name: "Active", value: overview.users.active, color: TONES.mint },
+                  { name: "Disabled", value: overview.users.disabled, color: TONES.slate },
+                ]}
+                totalLabel="accounts"
+                height={112}
+                emptyLabel="No accounts provisioned"
+              />
+              <RankList
+                title="Stored records"
+                subtitle="Rows retained in this deployment"
+                rows={[
+                  { label: "Flows", value: overview.records.flows },
+                  { label: "Alerts", value: overview.records.alerts },
+                  { label: "Reports", value: overview.records.reports },
+                  { label: "Replay sessions", value: overview.records.replay_sessions },
+                ]}
+                tone="blue"
+                valueFormatter={formatNumber}
+              />
+              <p className="flex items-start gap-1.5 text-[10.5px] leading-relaxed text-slate-600">
+                <KeyRound className="mt-0.5 h-3 w-3 shrink-0" />
+                Passwords use scrypt with a per-user salt. Sessions are signed server-side and validated on every request.
+              </p>
             </div>
           </div>
         ) : null

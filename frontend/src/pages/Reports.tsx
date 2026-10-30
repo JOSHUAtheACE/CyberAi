@@ -4,9 +4,12 @@ import {
   FileJson,
   FileSpreadsheet,
   FileText,
+  Layers,
   Loader2,
   Plus,
   RefreshCw,
+  ShieldAlert,
+  TriangleAlert,
 } from "lucide-react";
 import { useState } from "react";
 import { ChartPanel, Pagination } from "@/components/app";
@@ -19,10 +22,19 @@ import {
   PageHeader,
   SectionTitle,
   Skeleton,
-  Stat,
   StatusBadge,
 } from "@/components/ui";
-import { barOption, donutOption, lineOption, shortBucket } from "@/lib/charts";
+import {
+  DonutCard,
+  MeterList,
+  RankList,
+  Ring,
+  ScoreBar,
+  severityColor,
+  SparkKpi,
+  TONES,
+} from "@/components/visuals";
+import { barOption, lineOption, shortBucket } from "@/lib/charts";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { useWorkspace } from "@/context/WorkspaceContext";
@@ -141,6 +153,20 @@ function ExportButtons({ report, canExport }: { report: Pick<ReportItem, "id" | 
   );
 }
 
+function DetailStat({ label, value, hint, tone = "slate" }: { label: string; value: string; hint?: string; tone?: keyof typeof TONES }) {
+  const color = TONES[tone];
+  return (
+    <div className="min-w-0 border-l border-white/[0.07] pl-2.5">
+      <p className="flex items-center gap-1.5 text-[9px] uppercase tracking-[0.14em] text-slate-500">
+        <span className="h-1 w-1 shrink-0 rounded-full" style={{ background: color, boxShadow: `0 0 6px ${color}80` }} />
+        <span className="truncate">{label}</span>
+      </p>
+      <p className="mt-1 font-mono text-[15px] leading-none tabular-nums text-slate-100">{value}</p>
+      {hint ? <p className="mt-1 truncate text-[9px] text-slate-600">{hint}</p> : null}
+    </div>
+  );
+}
+
 function ReportDetailView({
   reportId,
   canExport,
@@ -159,6 +185,7 @@ function ReportDetailView({
   });
   const report = query.data;
   const summary = report?.summary ?? null;
+  const directionTotal = summary ? summary.direction_distribution.reduce((sum, row) => sum + row.count, 0) : 0;
 
   return (
     <Modal
@@ -196,24 +223,44 @@ function ReportDetailView({
           icon={<FileBarChart className="h-4 w-4" />}
         />
       ) : (
-        <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Stat label="Flows" value={formatNumber(summary.totals.flows)} hint={`${summary.totals.flows_per_second.toFixed(2)} flows/s`} />
-            <Stat label="Volume" value={formatBytes(summary.totals.bytes_total)} hint={`${formatNumber(summary.totals.packets)} packets`} />
-            <Stat label="Alerts" value={formatNumber(summary.totals.alerts)} tone={summary.totals.alerts ? "accent" : "default"} hint={`${summary.totals.critical} critical · ${summary.totals.high} high`} />
-            <Stat label="Unique sources" value={formatNumber(summary.totals.unique_sources)} />
-            <Stat label="Unique destinations" value={formatNumber(summary.totals.unique_destinations)} />
-            <Stat
-              label="False positives"
-              value={formatNumber(summary.totals.false_positives)}
-              tone={summary.totals.false_positives ? "danger" : "default"}
-              hint={
-                summary.totals.avg_confidence !== null
-                  ? `${summary.totals.avg_confidence.toFixed(3)} mean score`
-                  : undefined
-              }
-            />
-          </div>
+        <div className="space-y-4">
+          <Panel className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+            <div className="flex items-center justify-center gap-4 sm:justify-start">
+              <Ring
+                ratio={summary.review.false_positive_rate_on_reviewed ?? 0}
+                display={formatPercent(summary.review.false_positive_rate_on_reviewed, 1)}
+                caption="FP on reviewed"
+                color={(summary.review.false_positive_rate_on_reviewed ?? 0) > 0 ? TONES.amber : TONES.mint}
+                size={84}
+              />
+              <div className="h-14 w-px bg-white/[0.07]" />
+              <Ring
+                ratio={summary.totals.avg_confidence ?? 0}
+                display={summary.totals.avg_confidence !== null ? summary.totals.avg_confidence.toFixed(3) : "—"}
+                caption="mean score"
+                color={TONES.accent}
+                size={84}
+              />
+            </div>
+            <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-3 gap-y-3 sm:grid-cols-3">
+              <DetailStat label="Flows" value={formatNumber(summary.totals.flows)} hint={`${summary.totals.flows_per_second.toFixed(2)} flows/s`} tone="blue" />
+              <DetailStat label="Volume" value={formatBytes(summary.totals.bytes_total)} hint={`${formatNumber(summary.totals.packets)} packets`} tone="violet" />
+              <DetailStat
+                label="Alerts"
+                value={formatNumber(summary.totals.alerts)}
+                hint={`${summary.totals.critical} critical · ${summary.totals.high} high`}
+                tone={summary.totals.critical ? "rose" : "accent"}
+              />
+              <DetailStat label="Sources" value={formatNumber(summary.totals.unique_sources)} hint="unique" tone="blue" />
+              <DetailStat label="Destinations" value={formatNumber(summary.totals.unique_destinations)} hint="unique" tone="violet" />
+              <DetailStat
+                label="False positives"
+                value={formatNumber(summary.totals.false_positives)}
+                hint="stored in period"
+                tone={summary.totals.false_positives ? "amber" : "mint"}
+              />
+            </div>
+          </Panel>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <ChartPanel
@@ -247,17 +294,44 @@ function ReportDetailView({
             />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <ChartPanel
+          <div className="grid gap-4 xl:grid-cols-3">
+            <DonutCard
               title="Severity distribution"
-              subtitle="Severity expresses potential impact, not proof of compromise"
-              option={donutOption({
-                items: summary.severity_distribution.map((item) => ({ name: titleCase(item.severity), value: item.count })),
-                colors: SEVERITY_COLORS,
-              })}
-              height={190}
-              empty={!summary.totals.alerts}
+              subtitle="Potential impact, not proof of compromise"
+              items={summary.severity_distribution.map((item, index) => ({
+                name: titleCase(item.severity),
+                value: item.count,
+                color: severityColor(item.severity) ?? SEVERITY_COLORS[index % SEVERITY_COLORS.length],
+              }))}
+              totalLabel="alerts"
+              height={126}
+              emptyLabel="No alerts in this period"
             />
+            <DonutCard
+              title="Threat categories"
+              subtitle="Alert counts by recorded threat class"
+              items={summary.category_distribution.map((item, index) => ({
+                name: titleCase(item.category),
+                value: item.count,
+                color: [TONES.violet, TONES.blue, TONES.amber, TONES.rose, TONES.mint, TONES.accent][index % 6],
+              }))}
+              totalLabel="alerts"
+              height={126}
+              emptyLabel="No categories recorded"
+            />
+            <MeterList
+              title="Traffic direction"
+              subtitle="Flow counts by collector direction field"
+              rows={summary.direction_distribution.map((row, index) => ({
+                label: titleCase(row.direction),
+                value: formatNumber(row.count),
+                ratio: directionTotal ? row.count / directionTotal : 0,
+                tone: (["blue", "accent", "violet", "amber"] as const)[index % 4],
+              }))}
+            />
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
             <ChartPanel
               title="Protocol mix"
               subtitle="Flow counts by transport protocol"
@@ -266,97 +340,120 @@ function ReportDetailView({
                 series: [{ name: "Flows", data: summary.protocol_distribution.map((item) => item.count) }],
                 colorByIndex: true,
               })}
-              height={190}
+              height={230}
               empty={!summary.protocol_distribution.length}
             />
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Panel className="p-4">
-              <SectionTitle eyebrow="Detectors" title="Detector performance in this period" />
+            <Panel className="flex min-w-0 flex-col p-4">
+              <SectionTitle
+                eyebrow="Detectors"
+                title="Detector performance"
+                subtitle="Mean confidence uses each detector's declared score type; values are not comparable across types."
+              />
               {summary.detector_performance.length ? (
-                <div className="mt-3 overflow-x-auto">
-                  <table className="table-base min-w-[420px]">
-                    <thead>
-                      <tr>
-                        <th>Detector</th>
-                        <th>Alerts</th>
-                        <th>Mean confidence</th>
-                        <th>False positives</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {summary.detector_performance.map((row) => (
-                        <tr key={row.detector_code}>
-                          <td>
-                            <p className="text-[11.5px] text-slate-300">{row.name}</p>
-                            <p className="text-[10px] uppercase tracking-[0.06em] text-slate-600">
-                              {row.confidence_type?.replace(/_/g, " ") ?? "score"}
-                            </p>
-                          </td>
-                          <td className="font-mono text-[11.5px] tabular-nums text-slate-300">{row.alerts}</td>
-                          <td className="font-mono text-[11.5px] tabular-nums text-slate-300">
-                            {row.avg_confidence !== null ? row.avg_confidence.toFixed(3) : "—"}
-                          </td>
-                          <td className="font-mono text-[11.5px] tabular-nums text-slate-300">{row.false_positives}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="mt-3 flex-1 space-y-3.5">
+                  {summary.detector_performance.map((row) => {
+                    const share = summary.totals.alerts ? row.alerts / summary.totals.alerts : 0;
+                    return (
+                      <div key={row.detector_code}>
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="min-w-0 flex-1 truncate text-[11px] text-slate-300">{row.name}</p>
+                          <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-slate-400">
+                            {formatNumber(row.alerts)} <span className="text-slate-600">alerts</span>
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-[9px] uppercase tracking-[0.08em] text-slate-600">
+                          {row.confidence_type?.replace(/_/g, " ") ?? "score"} · FP {row.false_positives}
+                        </p>
+                        <div className="mt-1.5 space-y-1.5">
+                          <ScoreBar
+                            label="Share of alerts"
+                            value={row.alerts}
+                            max={Math.max(1, summary.totals.alerts)}
+                            display={formatPercent(share, 0)}
+                            color={TONES.blue}
+                          />
+                          {row.avg_confidence !== null ? (
+                            <ScoreBar
+                              label="Mean confidence"
+                              value={row.avg_confidence}
+                              max={1}
+                              display={row.avg_confidence.toFixed(3)}
+                              color={TONES.accent}
+                            />
+                          ) : (
+                            <p className="text-[9px] text-slate-600">Mean confidence not recorded</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="mt-3 text-[11.5px] text-slate-500">No detector produced alerts in this period.</p>
               )}
             </Panel>
-            <Panel className="p-4">
-              <SectionTitle eyebrow="Operations" title="Review and processing" />
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                <Stat label="Reviewed alerts" value={formatNumber(summary.review.reviewed)} hint="closed or false positive" />
-                <Stat
-                  label="FP rate on reviewed"
-                  value={formatPercent(summary.review.false_positive_rate_on_reviewed)}
-                  hint="not a model false-positive rate"
-                />
-                <Stat label="Completed jobs" value={formatNumber(summary.processing.completed_jobs)} />
-                <Stat label="Records processed" value={formatNumber(summary.processing.records_processed)} />
-                <Stat label="Avg processing" value={summary.processing.avg_processing_ms !== null ? `${summary.processing.avg_processing_ms} ms` : "—"} />
-                <Stat label="Avg detection" value={summary.processing.avg_detection_ms !== null ? `${summary.processing.avg_detection_ms} ms` : "—"} />
-              </div>
-              <p className="mt-3 text-[10.5px] leading-relaxed text-slate-600">{summary.processing.note}</p>
-            </Panel>
           </div>
 
+          <Panel className="p-4">
+            <SectionTitle
+              eyebrow="Operations"
+              title="Review and processing"
+              subtitle="Review coverage and ingestion timings recorded alongside this report."
+            />
+            <div className="mt-3 flex flex-col gap-4 sm:flex-row">
+              <div className="flex items-center justify-center gap-4 sm:justify-start">
+                <Ring
+                  ratio={summary.totals.alerts ? summary.review.reviewed / summary.totals.alerts : 0}
+                  display={summary.totals.alerts ? formatPercent(summary.review.reviewed / summary.totals.alerts, 0) : "—"}
+                  caption="reviewed"
+                  color={TONES.blue}
+                  size={78}
+                />
+                <Ring
+                  ratio={summary.review.false_positive_rate_on_reviewed ?? 0}
+                  display={formatPercent(summary.review.false_positive_rate_on_reviewed, 1)}
+                  caption="FP · reviewed"
+                  color={TONES.amber}
+                  size={78}
+                />
+              </div>
+              <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-3 gap-y-3 sm:grid-cols-3">
+                <DetailStat label="Reviewed" value={formatNumber(summary.review.reviewed)} hint="closed or false positive" tone="blue" />
+                <DetailStat label="Completed jobs" value={formatNumber(summary.processing.completed_jobs)} tone="violet" />
+                <DetailStat label="Records processed" value={formatNumber(summary.processing.records_processed)} tone="accent" />
+                <DetailStat
+                  label="Avg processing"
+                  value={summary.processing.avg_processing_ms !== null ? `${summary.processing.avg_processing_ms} ms` : "—"}
+                  tone="mint"
+                />
+                <DetailStat
+                  label="Avg detection"
+                  value={summary.processing.avg_detection_ms !== null ? `${summary.processing.avg_detection_ms} ms` : "—"}
+                  tone="mint"
+                />
+                <DetailStat label="False positives" value={formatNumber(summary.totals.false_positives)} tone="amber" />
+              </div>
+            </div>
+            <p className="mt-3 text-[10.5px] leading-relaxed text-slate-600">{summary.processing.note}</p>
+          </Panel>
+
           <div className="grid gap-4 lg:grid-cols-2">
-            {[
-              { title: "Top sources", rows: summary.top_sources, label: "Source" },
-              { title: "Top destinations", rows: summary.top_destinations, label: "Destination" },
-            ].map((section) => (
-              <Panel key={section.title} className="p-4">
-                <SectionTitle title={section.title} />
-                {section.rows.length ? (
-                  <table className="table-base mt-3">
-                    <thead>
-                      <tr>
-                        <th>{section.label}</th>
-                        <th className="text-right">Volume</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {section.rows.map((row) => (
-                        <tr key={row.ip}>
-                          <td className="font-mono text-[11.5px] text-slate-300">{row.ip}</td>
-                          <td className="text-right font-mono text-[11.5px] tabular-nums text-slate-400">
-                            {formatBytes(row.bytes)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <p className="mt-3 text-[11.5px] text-slate-500">No flows in this period.</p>
-                )}
-              </Panel>
-            ))}
+            <RankList
+              title="Top sources"
+              subtitle="Volume recorded from each source IP"
+              rows={summary.top_sources.map((row) => ({ label: row.ip, value: row.bytes }))}
+              valueFormatter={formatBytes}
+              tone="blue"
+              emptyLabel="No flows in this period"
+            />
+            <RankList
+              title="Top destinations"
+              subtitle="Volume recorded toward each destination IP"
+              rows={summary.top_destinations.map((row) => ({ label: row.ip, value: row.bytes }))}
+              valueFormatter={formatBytes}
+              tone="violet"
+              emptyLabel="No flows in this period"
+            />
           </div>
 
           <Panel className="p-4">
@@ -439,6 +536,16 @@ export function Reports() {
   });
 
   const reports = listQuery.data?.items ?? [];
+  const pageAlerts = reports.reduce((sum, report) => sum + (report.peek.alerts ?? 0), 0);
+  const pageCritical = reports.reduce((sum, report) => sum + (report.peek.critical ?? 0), 0);
+  const chronological = [...reports].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  const alertSpark = chronological.map((report) => report.peek.alerts ?? 0);
+  const criticalSpark = chronological.map((report) => report.peek.critical ?? 0);
+  const latestReport = reports.reduce<ReportItem | null>(
+    (latest, report) =>
+      !latest || new Date(report.created_at).getTime() > new Date(latest.created_at).getTime() ? report : latest,
+    null,
+  );
   const kinds = listQuery.data?.kinds ?? [
     { value: "security_summary", label: "Network threat & traffic summary" },
     { value: "executive", label: "Executive security posture" },
@@ -508,63 +615,130 @@ export function Reports() {
         />
       ) : (
         <>
+          <div className="mb-4 grid grid-cols-2 gap-2.5 xl:grid-cols-4">
+            <SparkKpi
+              label="Reports stored"
+              value={formatNumber(listQuery.data?.total ?? reports.length)}
+              icon={FileBarChart}
+              tone="blue"
+              help="Reports are stored aggregates scoped to the active workspace."
+              footnote="workspace scope"
+            />
+            <SparkKpi
+              label="On this page"
+              value={formatNumber(reports.length)}
+              icon={Layers}
+              tone="violet"
+              footnote={latestReport ? `latest ${relativeTime(latestReport.created_at)}` : undefined}
+            />
+            <SparkKpi
+              label="Alerts captured"
+              value={formatNumber(pageAlerts)}
+              icon={ShieldAlert}
+              tone="accent"
+              spark={alertSpark}
+              help="Sum of alert counts recorded inside each report on this page."
+              footnote="sum over current page"
+            />
+            <SparkKpi
+              label="Critical captured"
+              value={formatNumber(pageCritical)}
+              icon={TriangleAlert}
+              tone="rose"
+              spark={criticalSpark}
+              sparkColor={TONES.rose}
+              footnote="sum over current page"
+            />
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {reports.map((report) => (
-              <Panel key={report.id} className="flex flex-col p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone={KIND_TONE[report.kind] ?? "slate"}>{report.kind_label}</Badge>
-                      <StatusBadge status={report.status} />
+            {reports.map((report) => {
+              const alerts = report.peek.alerts ?? 0;
+              const critical = report.peek.critical ?? 0;
+              const criticalShare = alerts > 0 ? critical / alerts : 0;
+              const kindTone = KIND_TONE[report.kind] ?? "slate";
+              const kindColor = TONES[kindTone as keyof typeof TONES] ?? TONES.slate;
+              return (
+                <Panel key={report.id} className="panel-hover flex flex-col p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge tone={kindTone}>{report.kind_label}</Badge>
+                        <StatusBadge status={report.status} />
+                      </div>
+                      <h3 className="mt-2 text-[13px] font-semibold leading-snug tracking-tight text-slate-100">
+                        {report.title}
+                      </h3>
+                      <p className="mt-1 font-mono text-[10.5px] text-slate-500">{report.reference}</p>
                     </div>
-                    <h3 className="mt-2 text-[13px] font-semibold leading-snug tracking-tight text-slate-100">
-                      {report.title}
-                    </h3>
-                    <p className="mt-1 font-mono text-[10.5px] text-slate-500">{report.reference}</p>
-                  </div>
-                </div>
-
-                <dl className="mt-3 grid grid-cols-3 gap-2 border-y border-white/[0.06] py-2.5">
-                  <div>
-                    <dt className="label text-[9.5px]">Alerts</dt>
-                    <dd className="font-mono text-[13px] tabular-nums text-slate-200">{formatNumber(report.peek.alerts ?? 0)}</dd>
-                  </div>
-                  <div>
-                    <dt className="label text-[9.5px]">Flows</dt>
-                    <dd className="font-mono text-[13px] tabular-nums text-slate-200">{formatNumber(report.peek.flows ?? 0)}</dd>
-                  </div>
-                  <div>
-                    <dt className="label text-[9.5px]">Critical</dt>
-                    <dd className={cn("font-mono text-[13px] tabular-nums", (report.peek.critical ?? 0) > 0 ? "text-signal-rose" : "text-slate-200")}>
-                      {formatNumber(report.peek.critical ?? 0)}
-                    </dd>
-                  </div>
-                </dl>
-
-                <div className="mt-2 space-y-1 text-[10.5px] text-slate-500">
-                  <p>
-                    Period{" "}
-                    <span className="font-mono text-slate-400">
-                      {formatDateTime(report.period.start)}Z → {formatDateTime(report.period.end)}Z
+                    <span
+                      aria-hidden
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border"
+                      style={{ background: `${kindColor}14`, borderColor: `${kindColor}2b`, color: kindColor }}
+                    >
+                      <FileBarChart className="h-4 w-4" />
                     </span>
-                  </p>
-                  <p>
-                    Generated {relativeTime(report.created_at)}
-                    {report.created_by ? ` by ${report.created_by}` : ""}
-                  </p>
-                  <p className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-slate-600">
-                    {report.environment} · {report.workspace ?? "workspace"}
-                  </p>
-                </div>
+                  </div>
 
-                <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3">
-                  <button type="button" className="btn-secondary px-2.5 py-1 text-[11px]" onClick={() => setSelectedId(report.id)}>
-                    <FileBarChart className="h-3 w-3" /> View
-                  </button>
-                  <ExportButtons report={report} canExport={canExport} />
-                </div>
-              </Panel>
-            ))}
+                  <dl className="mt-3 grid grid-cols-3 gap-2 border-y border-white/[0.06] py-2.5">
+                    <div>
+                      <dt className="label text-[9.5px]">Alerts</dt>
+                      <dd className="font-mono text-[13px] tabular-nums text-slate-200">{formatNumber(alerts)}</dd>
+                    </div>
+                    <div>
+                      <dt className="label text-[9.5px]">Flows</dt>
+                      <dd className="font-mono text-[13px] tabular-nums text-slate-200">{formatNumber(report.peek.flows ?? 0)}</dd>
+                    </div>
+                    <div>
+                      <dt className="label text-[9.5px]">Critical</dt>
+                      <dd className={cn("font-mono text-[13px] tabular-nums", critical > 0 ? "text-signal-rose" : "text-slate-200")}>
+                        {formatNumber(critical)}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <div className="mt-2.5">
+                    <div className="flex items-baseline justify-between text-[9px] uppercase tracking-[0.1em] text-slate-600">
+                      <span>critical share</span>
+                      <span className="font-mono tabular-nums">{alerts ? formatPercent(criticalShare, 0) : "—"}</span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
+                      <div
+                        className="h-full rounded-full transition-[width] duration-700"
+                        style={{
+                          width: `${alerts ? Math.max(2, criticalShare * 100) : 0}%`,
+                          background: TONES.rose,
+                          boxShadow: `0 0 6px ${TONES.rose}66`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-2.5 space-y-1 text-[10.5px] text-slate-500">
+                    <p>
+                      Period{" "}
+                      <span className="font-mono text-slate-400">
+                        {formatDateTime(report.period.start)}Z → {formatDateTime(report.period.end)}Z
+                      </span>
+                    </p>
+                    <p>
+                      Generated {relativeTime(report.created_at)}
+                      {report.created_by ? ` by ${report.created_by}` : ""}
+                    </p>
+                    <p className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-slate-600">
+                      {report.environment} · {report.workspace ?? "workspace"}
+                    </p>
+                  </div>
+
+                  <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3">
+                    <button type="button" className="btn-secondary px-2.5 py-1 text-[11px]" onClick={() => setSelectedId(report.id)}>
+                      <FileBarChart className="h-3 w-3" /> View
+                    </button>
+                    <ExportButtons report={report} canExport={canExport} />
+                  </div>
+                </Panel>
+              );
+            })}
           </div>
           {listQuery.data ? (
             <Pagination

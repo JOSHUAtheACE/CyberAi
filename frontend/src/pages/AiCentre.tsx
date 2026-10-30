@@ -13,10 +13,11 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChartPanel, SummaryStrip } from "@/components/app";
+import { RadarCard, Ring, TONES, type Tone } from "@/components/visuals";
 import { EChart, chartPalette } from "@/components/charts/EChart";
 import {
   Badge,
@@ -126,28 +127,76 @@ function curveOption(
 function MetricCard({
   label,
   value,
+  display,
   help,
-  tone = "default",
+  tone = "accent",
+}: {
+  label: string;
+  value: number;
+  display: string;
+  help: string;
+  tone?: Tone;
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-white/[0.06] bg-ink-900/50 px-2.5 py-2.5">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -right-6 -top-8 h-16 w-16 rounded-full opacity-[0.12] blur-2xl"
+        style={{ background: TONES[tone] }}
+      />
+      <div className="flex items-start justify-between gap-1">
+        <p className="label text-[8.5px] leading-tight">{label}</p>
+        <InfoHint text={help} label={`About ${label}`} />
+      </div>
+      <div className="mt-1 flex justify-center">
+        <Ring ratio={value} display={display} color={TONES[tone]} size={74} thickness={5.5} />
+      </div>
+    </div>
+  );
+}
+
+function AiTile({
+  label,
+  value,
+  icon: Icon,
+  tone,
+  ratio,
+  footnote,
 }: {
   label: string;
   value: string;
-  help: string;
-  tone?: "default" | "warn" | "good";
+  icon: LucideIcon;
+  tone: Tone;
+  ratio?: number;
+  footnote?: string;
 }) {
+  const color = TONES[tone];
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-ink-900/50 px-3.5 py-3">
+    <div className="relative overflow-hidden rounded-xl border border-white/[0.07] bg-ink-800/60 p-3">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -right-6 -top-9 h-16 w-16 rounded-full opacity-[0.15] blur-2xl"
+        style={{ background: color }}
+      />
       <div className="flex items-start justify-between gap-1.5">
-        <p className="label leading-tight">{label}</p>
-        <InfoHint text={help} label={`About ${label}`} />
+        <p className="label min-w-0 truncate leading-tight">{label}</p>
+        <span
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border"
+          style={{ background: `${color}14`, borderColor: `${color}2b`, color }}
+        >
+          <Icon className="h-3 w-3" />
+        </span>
       </div>
-      <p
-        className={cn(
-          "mt-2 font-mono text-[20px] font-medium tabular-nums",
-          tone === "warn" ? "text-signal-amber" : tone === "good" ? "text-signal-mint" : "text-slate-100",
-        )}
-      >
-        {value}
-      </p>
+      <p className="mt-2 font-mono text-[19px] font-medium leading-none tabular-nums text-slate-100">{value}</p>
+      {ratio !== undefined ? (
+        <div className="mt-2 h-[3px] overflow-hidden rounded-full bg-white/[0.06]">
+          <div
+            className="h-full rounded-full"
+            style={{ width: `${Math.max(2, Math.min(100, ratio * 100))}%`, background: color, boxShadow: `0 0 6px ${color}55` }}
+          />
+        </div>
+      ) : null}
+      {footnote ? <p className="mt-1 truncate text-[9px] text-slate-600">{footnote}</p> : null}
     </div>
   );
 }
@@ -179,10 +228,25 @@ function ModelCard({ model, selected, onSelect }: { model: ModelVersion; selecte
         <Badge tone="violet">{CONFIDENCE_LABEL[model.confidence_type] ?? model.confidence_type}</Badge>
         <Badge tone="slate">{model.algorithm}</Badge>
       </div>
-      <div className="mt-2.5 grid grid-cols-3 gap-1.5 border-t border-white/[0.05] pt-2.5 text-[10px]">
-        <span className="text-slate-600">P <span className="font-mono text-slate-300">{metrics.precision?.toFixed(3) ?? "—"}</span></span>
-        <span className="text-slate-600">R <span className="font-mono text-slate-300">{metrics.recall?.toFixed(3) ?? "—"}</span></span>
-        <span className="text-slate-600">F1 <span className="font-mono text-slate-300">{metrics.f1?.toFixed(3) ?? "—"}</span></span>
+      <div className="mt-2.5 grid grid-cols-3 gap-2 border-t border-white/[0.05] pt-2.5">
+        {[
+          { key: "P", value: metrics.precision, color: TONES.blue },
+          { key: "R", value: metrics.recall, color: TONES.violet },
+          { key: "F1", value: metrics.f1, color: TONES.accent },
+        ].map((metric) => (
+          <div key={metric.key}>
+            <div className="flex items-baseline justify-between gap-1 text-[9px] text-slate-600">
+              <span>{metric.key}</span>
+              <span className="font-mono text-slate-300">{metric.value?.toFixed(3) ?? "—"}</span>
+            </div>
+            <div className="mt-1 h-[2px] overflow-hidden rounded-full bg-white/[0.06]">
+              <div
+                className="h-full rounded-full"
+                style={{ width: `${Math.max(2, Math.min(100, (metric.value ?? 0) * 100))}%`, background: metric.color }}
+              />
+            </div>
+          </div>
+        ))}
       </div>
       <p className="mt-2 truncate text-[9.5px] text-slate-600" title={model.dataset_name}>
         {model.dataset_name} · {model.dataset_version}
@@ -233,11 +297,11 @@ function EvaluationView({ evaluation }: { evaluation: Evaluation }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-        <MetricCard label="Precision" value={scores.precision.toFixed(3)} help="Of alerts raised at the stored threshold, the share matching the synthetic ground truth." />
-        <MetricCard label="Recall" value={scores.recall.toFixed(3)} help="Of positive synthetic scenarios, the share the model flagged at the stored threshold." />
-        <MetricCard label="F1" value={scores.f1.toFixed(3)} help="Harmonic mean of precision and recall on the held-out synthetic split." />
-        <MetricCard label="False positive rate" value={formatPercent(scores.false_positive_rate, 2)} help="Benign synthetic flows incorrectly flagged at the stored threshold." tone={scores.false_positive_rate > 0.1 ? "warn" : "default"} />
-        <MetricCard label="ROC AUC" value={scores.roc_auc === null ? "—" : scores.roc_auc.toFixed(3)} help="Ranking quality across thresholds on the synthetic evaluation split." />
+        <MetricCard label="Precision" value={scores.precision} display={scores.precision.toFixed(3)} tone="blue" help="Of alerts raised at the stored threshold, the share matching the synthetic ground truth." />
+        <MetricCard label="Recall" value={scores.recall} display={scores.recall.toFixed(3)} tone="violet" help="Of positive synthetic scenarios, the share the model flagged at the stored threshold." />
+        <MetricCard label="F1" value={scores.f1} display={scores.f1.toFixed(3)} tone="accent" help="Harmonic mean of precision and recall on the held-out synthetic split." />
+        <MetricCard label="FP rate" value={scores.false_positive_rate} display={formatPercent(scores.false_positive_rate, 2)} tone={scores.false_positive_rate > 0.1 ? "rose" : "amber"} help="Benign synthetic flows incorrectly flagged at the stored threshold. Lower is better." />
+        <MetricCard label="ROC AUC" value={scores.roc_auc ?? 0} display={scores.roc_auc === null ? "—" : scores.roc_auc.toFixed(3)} tone="mint" help="Ranking quality across thresholds on the synthetic evaluation split." />
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-white/[0.06] bg-ink-900/35 px-3.5 py-2.5 text-[10.5px]">
@@ -545,6 +609,55 @@ export function AiCentre() {
   const selectedDetector = data?.detectors.find((detector) => detector.model?.id === activeId) ?? null;
   const evaluation = selectedDetector?.evaluation ?? null;
   const loadedCount = models.filter((model) => model.loaded).length;
+  const mlCount = data?.detectors.filter((detector) => detector.ml_supported).length ?? 0;
+  const evaluatedCount = data?.detectors.filter((detector) => detector.evaluation).length ?? 0;
+  const hasAuc =
+    Boolean(selectedModel) &&
+    models.every((model) => model.metrics_summary.roc_auc !== null) &&
+    selectedModel?.metrics_summary.roc_auc !== null;
+  const radarIndicators = [
+    { name: "Precision" },
+    { name: "Recall" },
+    { name: "F1" },
+    { name: "Specificity" },
+    ...(hasAuc ? [{ name: "ROC AUC" }] : []),
+  ];
+  const radarSeries = selectedModel
+    ? (() => {
+        const suiteMean = (pick: (model: ModelVersion) => number) =>
+          models.length ? models.reduce((sum, model) => sum + pick(model), 0) / models.length : 0;
+        const selectedMetrics = selectedModel.metrics_summary;
+        const build = (precision: number, recall: number, f1: number, fpr: number, auc: number | null) => [
+          precision,
+          recall,
+          f1,
+          1 - fpr,
+          ...(hasAuc ? [auc ?? 0] : []),
+        ];
+        return [
+          {
+            name: "Selected",
+            values: build(selectedMetrics.precision, selectedMetrics.recall, selectedMetrics.f1, selectedMetrics.false_positive_rate, selectedMetrics.roc_auc),
+            color: TONES.accent,
+          },
+          ...(models.length > 1
+            ? [
+                {
+                  name: "Suite mean",
+                  values: build(
+                    suiteMean((model) => model.metrics_summary.precision),
+                    suiteMean((model) => model.metrics_summary.recall),
+                    suiteMean((model) => model.metrics_summary.f1),
+                    suiteMean((model) => model.metrics_summary.false_positive_rate),
+                    suiteMean((model) => model.metrics_summary.roc_auc ?? 0),
+                  ),
+                  color: TONES.violet,
+                },
+              ]
+            : []),
+        ];
+      })()
+    : [];
 
   return (
     <div>
@@ -562,16 +675,6 @@ export function AiCentre() {
             ) : null}
           </>
         }
-      />
-
-      <SummaryStrip
-        items={[
-          { label: "Active models", value: formatNumber(models.length) },
-          { label: "Loaded in memory", value: `${formatNumber(loadedCount)} / ${formatNumber(models.length)}`, tone: "accent" },
-          { label: "Detection modules", value: formatNumber(data?.detectors.length ?? 0) },
-          { label: "Datasets", value: data?.dataset_provenance.versions.join(" · ") || "—" },
-          { label: "Insights", value: formatNumber(insights.data?.insights.length ?? 0) },
-        ]}
       />
 
       {data?.dataset_provenance.not_production_accuracy ? (
@@ -592,6 +695,65 @@ export function AiCentre() {
         </div>
       ) : (
         <>
+          <div className="mt-4 grid gap-4 xl:grid-cols-12">
+            <RadarCard
+              className="xl:col-span-7"
+              title="Suite scorecard"
+              subtitle="Stored evaluation metrics · selected model versus suite mean"
+              indicators={radarIndicators}
+              series={radarSeries}
+              height={230}
+              empty={!radarSeries.length}
+              emptyLabel="No evaluated model versions are stored."
+              footer={
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[9px] text-slate-600">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: TONES.accent }} />
+                    selected model
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: TONES.violet }} />
+                    mean of {formatNumber(models.length)} active models
+                  </span>
+                  <span className="ml-auto font-mono">{data.dataset_provenance.versions.join(" · ")}</span>
+                </div>
+              }
+            />
+            <div className="grid grid-cols-2 gap-2.5 xl:col-span-5">
+              <AiTile
+                label="Active models"
+                value={formatNumber(models.length)}
+                icon={BrainCircuit}
+                tone="violet"
+                ratio={models.length ? loadedCount / models.length : 0}
+                footnote={`${formatNumber(loadedCount)} loaded in memory`}
+              />
+              <AiTile
+                label="Detection modules"
+                value={formatNumber(data.detectors.length)}
+                icon={ShieldCheck}
+                tone="accent"
+                ratio={data.detectors.length ? mlCount / data.detectors.length : 0}
+                footnote={`${formatNumber(mlCount)} ML-backed`}
+              />
+              <AiTile
+                label="Evaluations"
+                value={formatNumber(evaluatedCount)}
+                icon={FlaskConical}
+                tone="mint"
+                ratio={data.detectors.length ? evaluatedCount / data.detectors.length : 0}
+                footnote="stored evaluation records"
+              />
+              <AiTile
+                label="Insights"
+                value={formatNumber(insights.data?.insights.length ?? 0)}
+                icon={Sparkles}
+                tone="amber"
+                footnote="evidence-linked observations"
+              />
+            </div>
+          </div>
+
           <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,0.78fr)_minmax(0,1.7fr)]">
             <Panel className="p-4">
               <SectionTitle

@@ -244,7 +244,18 @@ export function AlertTable({
                   <SeverityBadge severity={alert.severity} />
                 </td>
                 <td>
-                  <span className="font-mono text-[11.5px] tabular-nums text-slate-300">{alert.confidence.toFixed(3)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[11.5px] tabular-nums text-slate-300">{alert.confidence.toFixed(3)}</span>
+                    <span className="h-[3px] w-10 overflow-hidden rounded-full bg-white/[0.07]">
+                      <span
+                        className="block h-full rounded-full"
+                        style={{
+                          width: `${Math.max(3, Math.min(100, alert.confidence * 100))}%`,
+                          background: alert.confidence >= 0.85 ? "#3DDC97" : alert.confidence >= 0.7 ? "#36D9D0" : "#F5B84B",
+                        }}
+                      />
+                    </span>
+                  </div>
                   <p className="mt-0.5 text-[9.5px] uppercase tracking-[0.06em] text-slate-600">
                     {alert.confidence_type.replace(/_/g, " ")}
                   </p>

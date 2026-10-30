@@ -10,6 +10,7 @@ import {
   ScanLine,
   ShieldCheck,
   Zap,
+  type LucideIcon,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { AlertTable, ChartPanel } from "@/components/app";
@@ -35,6 +36,7 @@ import {
   formatNumber,
   titleCase,
 } from "@/lib/format";
+import { Ring, TONES } from "@/components/visuals";
 import type { DetectorPage } from "@/lib/types";
 
 type Row = Record<string, unknown>;
@@ -543,26 +545,47 @@ function DataTable({ rows, columns }: { rows: Row[]; columns: Column[] }) {
   );
 }
 
-function KpiTile({ kpi }: { kpi: DetectorPage["kpis"][number] }) {
+function KpiTile({ kpi, icon: Icon }: { kpi: DetectorPage["kpis"][number]; icon: LucideIcon }) {
+  const numeric = typeof kpi.value === "number";
+  const ratio = numeric && kpi.unit === "0–1" ? Math.max(0, Math.min(1, kpi.value as number)) : null;
   const display =
     kpi.value === null || kpi.value === undefined
       ? "—"
-      : typeof kpi.value === "number"
+      : numeric
         ? kpi.unit === "0–1"
-          ? kpi.value.toFixed(3)
-          : formatNumber(kpi.value, kpi.unit === "0–1" ? 3 : 0)
+          ? (kpi.value as number).toFixed(3)
+          : formatNumber(kpi.value as number)
         : kpi.value;
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-ink-900/50 px-3.5 py-3">
+    <div className="relative overflow-hidden rounded-xl border border-white/[0.06] bg-ink-900/50 px-3.5 py-3">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -right-6 -top-8 h-16 w-16 rounded-full opacity-[0.14] blur-2xl"
+        style={{ background: TONES.accent }}
+      />
       <div className="flex items-start justify-between gap-2">
-        <p className="label leading-tight">{kpi.label}</p>
-        <InfoHint text={kpi.help} label={`About ${kpi.label}`} />
+        <p className="label min-w-0 truncate leading-tight">{kpi.label}</p>
+        <span className="flex items-center gap-1">
+          <InfoHint text={kpi.help} label={`About ${kpi.label}`} />
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-accent/20 bg-accent/[0.07] text-accent">
+            <Icon className="h-3 w-3" />
+          </span>
+        </span>
       </div>
-      <p className="mt-2 font-mono text-[19px] font-medium tabular-nums text-slate-100">{display}</p>
-      {kpi.value !== null && kpi.value !== undefined ? (
-        <p className="mt-0.5 text-[10px] text-slate-600">{kpi.unit}</p>
-      ) : null}
-      {kpi.note ? <p className="mt-1 line-clamp-2 text-[9.5px] leading-relaxed text-amber-200/60">{kpi.note}</p> : null}
+      {ratio !== null ? (
+        <div className="mt-2 flex items-center gap-3">
+          <Ring ratio={ratio} display={String(display)} caption={kpi.unit} size={58} thickness={5} />
+          {kpi.note ? <p className="min-w-0 line-clamp-3 text-[9px] leading-relaxed text-amber-200/60">{kpi.note}</p> : null}
+        </div>
+      ) : (
+        <>
+          <p className="mt-2 font-mono text-[19px] font-medium tabular-nums text-slate-100">{display}</p>
+          {kpi.value !== null && kpi.value !== undefined ? (
+            <p className="mt-0.5 text-[10px] text-slate-600">{kpi.unit}</p>
+          ) : null}
+          {kpi.note ? <p className="mt-1 line-clamp-2 text-[9.5px] leading-relaxed text-amber-200/60">{kpi.note}</p> : null}
+        </>
+      )}
     </div>
   );
 }
@@ -670,7 +693,7 @@ export function DetectionWorkspace() {
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
             {query.data.kpis.map((kpi) => (
-              <KpiTile key={kpi.key} kpi={kpi} />
+              <KpiTile key={kpi.key} kpi={kpi} icon={Icon} />
             ))}
           </div>
 

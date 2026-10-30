@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge, EmptyState, ErrorState, InfoHint, Panel, PageHeader, SectionTitle, Skeleton } from "@/components/ui";
+import { SparkKpi, TONES } from "@/components/visuals";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import { api } from "@/lib/api";
 import { formatDateTime, formatNumber, relativeTime, titleCase } from "@/lib/format";
@@ -42,7 +43,7 @@ const CONFIDENCE_LABEL: Record<string, string> = {
   anomaly_score: "Anomaly score",
 };
 
-function ModuleCard({ module }: { module: DetectionCatalogItem }) {
+function ModuleCard({ module, share }: { module: DetectionCatalogItem; share: number }) {
   const slug = module.slug ?? module.code;
   const Icon = ICONS[slug] ?? ShieldCheck;
   const accent = ACCENTS[slug] ?? ACCENTS.scanning;
@@ -68,6 +69,23 @@ function ModuleCard({ module }: { module: DetectionCatalogItem }) {
       <div className="mt-3 flex flex-wrap gap-1.5">
         <Badge tone="slate">{titleCase(module.threat_class)}</Badge>
         <Badge tone="neutral">{CONFIDENCE_LABEL[module.confidence_badge] ?? titleCase(module.confidence_badge)}</Badge>
+      </div>
+
+      <div className="mt-3">
+        <div className="flex items-baseline justify-between text-[9px] uppercase tracking-[0.1em] text-slate-600">
+          <span>share of detections</span>
+          <span className="font-mono tabular-nums">{(share * 100).toFixed(0)}%</span>
+        </div>
+        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
+          <div
+            className="h-full rounded-full transition-[width] duration-700"
+            style={{
+              width: `${Math.max(2, share * 100)}%`,
+              background: `linear-gradient(90deg, ${TONES.accent}55, ${TONES.accent})`,
+              boxShadow: `0 0 6px ${TONES.accent}55`,
+            }}
+          />
+        </div>
       </div>
 
       <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 border-t border-white/[0.05] pt-3 text-[10.5px]">
@@ -117,6 +135,11 @@ export function Detections() {
     staleTime: 30_000,
   });
 
+  const modules = catalog.data?.modules ?? [];
+  const activeModules = modules.filter((module) => module.status === "ACTIVE" && module.enabled).length;
+  const detectionsTotal = modules.reduce((sum, module) => sum + module.detections_total, 0);
+  const telemetryFields = new Set(modules.flatMap((module) => module.supported_inputs)).size;
+
   return (
     <div>
       <PageHeader
@@ -126,20 +149,17 @@ export function Detections() {
         actions={<Badge tone="slate">{workspaceSlug}</Badge>}
       />
 
-      <div className="mb-5 grid gap-2 sm:grid-cols-3">
-        {[
-          { icon: Database, title: "Telemetry-grounded", text: "Every chart is computed from stored flows or alerts in the selected window." },
-          { icon: ScanLine, title: "Coverage-aware", text: "Missing fields downgrade the analysis and are reported in the coverage note." },
-          { icon: ShieldCheck, title: "Passive by design", text: "No probing, no blocking, no payload decryption. Alerts are assessments, not verdicts." },
-        ].map((item) => (
-          <div key={item.title} className="flex items-start gap-2.5 rounded-xl border border-white/[0.06] bg-ink-900/35 px-3.5 py-3">
-            <item.icon className="mt-0.5 h-4 w-4 shrink-0 text-accent/80" />
-            <div>
-              <p className="text-[11.5px] font-medium text-slate-200">{item.title}</p>
-              <p className="mt-0.5 text-[10.5px] leading-relaxed text-slate-500">{item.text}</p>
-            </div>
-          </div>
-        ))}
+      <div className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        <SparkKpi label="Modules" value={formatNumber(modules.length)} icon={ShieldCheck} tone="blue" footnote="registered detectors" />
+        <SparkKpi label="Active" value={formatNumber(activeModules)} icon={Radar} tone="mint" footnote="enabled at runtime" />
+        <SparkKpi label="Detections" value={formatNumber(detectionsTotal)} icon={ScanLine} tone="rose" footnote="stored across modules" />
+        <SparkKpi
+          label="Telemetry fields"
+          value={formatNumber(telemetryFields)}
+          icon={Database}
+          tone="violet"
+          footnote="declared inputs across modules"
+        />
       </div>
 
       {catalog.isLoading ? (
@@ -153,7 +173,11 @@ export function Detections() {
       ) : catalog.data?.modules.length ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {catalog.data.modules.map((module) => (
-            <ModuleCard key={module.code} module={module} />
+            <ModuleCard
+              key={module.code}
+              module={module}
+              share={detectionsTotal ? module.detections_total / detectionsTotal : 0}
+            />
           ))}
         </div>
       ) : (

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Activity,
   ArrowUpRight,
   CheckCircle2,
   Database,
@@ -14,7 +15,8 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Pagination, SummaryStrip } from "@/components/app";
+import { Pagination } from "@/components/app";
+import { SparkKpi } from "@/components/visuals";
 import {
   Badge,
   EmptyState,
@@ -589,16 +591,36 @@ export function Intelligence() {
         <ErrorState message={(providersQuery.error as Error).message} retry={() => providersQuery.refetch()} />
       ) : (
         <>
-          <SummaryStrip
-            items={[
-              { label: "Providers", value: providers.length },
-              { label: "Configured", value: configuredProviders, tone: configuredProviders ? "accent" : "danger" },
-              { label: "Ready", value: readyProviders, tone: readyProviders ? "accent" : "danger" },
-              { label: "Cached indicators", value: formatNumber(data?.cache.indicators ?? 0) },
-              { label: "Enrichment records", value: formatNumber(data?.cache.enrichment_results ?? 0) },
-              { label: "Cache TTL", value: `${data?.cache.ttl_hours ?? 24}h` },
-            ]}
-          />
+          <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-4">
+            <SparkKpi
+              label="Providers"
+              value={formatNumber(providers.length)}
+              icon={Globe2}
+              tone="blue"
+              footnote={`${readyProviders} ready · ${providers.length - readyProviders} not ready`}
+            />
+            <SparkKpi
+              label="Configured"
+              value={formatNumber(configuredProviders)}
+              icon={KeyRound}
+              tone={configuredProviders ? "mint" : "slate"}
+              footnote="credentials present server-side"
+            />
+            <SparkKpi
+              label="Cached indicators"
+              value={formatNumber(data?.cache.indicators ?? 0)}
+              icon={Database}
+              tone="accent"
+              footnote={`TTL ${data?.cache.ttl_hours ?? 24} hours`}
+            />
+            <SparkKpi
+              label="Enrichment records"
+              value={formatNumber(data?.cache.enrichment_results ?? 0)}
+              icon={Activity}
+              tone="violet"
+              footnote="audited provider lookups"
+            />
+          </div>
 
           {data && !data.external_enrichment_allowed ? (
             <Panel className="border-signal-amber/20 bg-signal-amber/[0.04] p-4">

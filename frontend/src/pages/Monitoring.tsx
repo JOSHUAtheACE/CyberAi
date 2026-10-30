@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRightLeft,
+  Clock3,
   Download,
+  Layers,
   Network,
   Search,
   ShieldAlert,
@@ -12,6 +14,7 @@ import { Link } from "react-router-dom";
 import { ChartPanel, Pagination, SummaryStrip } from "@/components/app";
 import { EChart } from "@/components/charts/EChart";
 import { TopologyGraph } from "@/components/topology/TopologyGraph";
+import { SparkKpi } from "@/components/visuals";
 import {
   Badge,
   EmptyState,
@@ -206,14 +209,28 @@ export function Monitoring() {
             </button>
           </div>
 
-          <div className="mt-3">
-            <SummaryStrip
-              items={[
-                { label: "Matching flows", value: formatNumber(flows.data?.total ?? 0) },
-                { label: "Window", value: flows.data?.period.label ?? range },
-                { label: "Environment", value: flows.data?.workspace.environment ?? "—" },
-                { label: "Page", value: `${flows.data?.page ?? 1} / ${Math.max(1, Math.ceil((flows.data?.total ?? 0) / 25))}` },
-              ]}
+          <div className="mt-3 grid grid-cols-2 gap-2.5 xl:grid-cols-4">
+            <SparkKpi
+              label="Matching flows"
+              value={formatNumber(flows.data?.total ?? 0)}
+              icon={Network}
+              tone="blue"
+              footnote="stored records in window"
+            />
+            <SparkKpi
+              label="Alert-linked"
+              value={formatNumber(flows.data?.items.filter((flow) => flow.suspicious).length ?? 0)}
+              icon={ShieldAlert}
+              tone="rose"
+              footnote="on current page"
+            />
+            <SparkKpi label="Range" value={range} icon={Clock3} tone="violet" footnote={flows.data?.period.label} />
+            <SparkKpi
+              label="Page"
+              value={`${flows.data?.page ?? 1} / ${Math.max(1, Math.ceil((flows.data?.total ?? 0) / 25))}`}
+              icon={Layers}
+              tone="accent"
+              footnote={flows.data?.workspace.environment ? `${flows.data.workspace.environment} workspace` : undefined}
             />
           </div>
 

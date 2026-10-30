@@ -28,7 +28,8 @@ import {
   Skeleton,
   StatusBadge,
 } from "@/components/ui";
-import { Pagination, SummaryStrip } from "@/components/app";
+import { Pagination } from "@/components/app";
+import { Ring, SparkKpi, TONES } from "@/components/visuals";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { useWorkspace } from "@/context/WorkspaceContext";
@@ -64,6 +65,14 @@ type Quality = {
   direction_available?: boolean;
 };
 
+const STATUS_COLORS: Record<string, string> = {
+  COMPLETE: TONES.mint,
+  FAILED: TONES.rose,
+  QUEUED: TONES.violet,
+  PARSING: TONES.blue,
+  PROCESSING: TONES.accent,
+};
+
 function qualityOf(preview: PreviewResponse | null): Quality | null {
   if (!preview?.quality) return null;
   return preview.quality as Quality;
@@ -81,6 +90,11 @@ function Field({ label, value, hint }: { label: string; value: string; hint?: st
 
 function QualityReport({ preview }: { preview: PreviewResponse }) {
   const quality = qualityOf(preview);
+  const totalRows = quality?.total_rows ?? 0;
+  const accepted = quality?.valid_records ?? 0;
+  const acceptance = totalRows ? accepted / totalRows : null;
+  const rejections = quality ? Object.entries(quality.rejection_reasons ?? {}) : [];
+  const maxRejection = Math.max(1, ...rejections.map(([, count]) => Number(count) || 0));
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -95,6 +109,18 @@ function QualityReport({ preview }: { preview: PreviewResponse }) {
         )}
         <Badge tone="slate">{preview.kind === "pcap" ? "Packet capture" : `Flow export · ${preview.format ?? "csv"}`}</Badge>
         <span className="font-mono text-[10.5px] text-slate-500">{formatBytes(preview.size_bytes)}</span>
+        {acceptance !== null ? (
+          <span className="ml-auto">
+            <Ring
+              ratio={acceptance}
+              display={`${Math.round(acceptance * 100)}%`}
+              caption="accepted"
+              color={acceptance >= 0.98 ? TONES.mint : TONES.amber}
+              size={54}
+              thickness={5}
+            />
+          </span>
+        ) : null}
       </div>
 
       {preview.errors?.length ? (
@@ -168,15 +194,23 @@ function QualityReport({ preview }: { preview: PreviewResponse }) {
             </div>
             <div>
               <p className="label mb-1.5">Rejection reasons</p>
-              {Object.keys(quality.rejection_reasons ?? {}).length ? (
-                <ul className="space-y-0.5 text-[11px] text-slate-400">
-                  {Object.entries(quality.rejection_reasons ?? {}).map(([reason, count]) => (
-                    <li key={reason} className="flex justify-between gap-3">
-                      <span>{titleCase(reason)}</span>
-                      <span className="font-mono text-slate-300">{formatNumber(count)}</span>
-                    </li>
+              {rejections.length ? (
+                <div className="space-y-2">
+                  {rejections.map(([reason, count]) => (
+                    <div key={reason}>
+                      <div className="flex items-baseline justify-between gap-3 text-[10.5px]">
+                        <span className="min-w-0 truncate text-slate-400">{titleCase(reason)}</span>
+                        <span className="shrink-0 font-mono tabular-nums text-slate-300">{formatNumber(Number(count))}</span>
+                      </div>
+                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.05]">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${Math.max(3, (Number(count) / maxRejection) * 100)}%`, background: TONES.amber }}
+                        />
+                      </div>
+                    </div>
                   ))}
-                </ul>
+                </div>
               ) : (
                 <p className="text-[11px] text-slate-500">Every sampled record satisfied the contract.</p>
               )}
@@ -646,6 +680,10 @@ export function Ingestion() {
 
   const statusCounts = jobs.data?.status_counts ?? {};
   const previewQuality = qualityOf(preview);
+  const processingCount = (statusCounts.QUEUED ?? 0) + (statusCounts.PARSING ?? 0) + (statusCounts.PROCESSING ?? 0);
+  const liveCollectors = sourceOptions.filter((source) => (source.connection_state ?? source.status) === "LIVE").length;
+  const outcomeEntries = Object.entries(statusCounts).filter(([, count]) => count > 0);
+  const outcomeTotal = outcomeEntries.reduce((sum, [, count]) => sum + count, 0);
 
   return (
     <div>
@@ -660,15 +698,19 @@ export function Ingestion() {
         }
       />
 
-      <SummaryStrip
-        items={[
-          { label: "Jobs", value: formatNumber(jobs.data?.total ?? 0) },
-          { label: "Complete", value: formatNumber(statusCounts.COMPLETE ?? 0), tone: "accent" },
-          { label: "Processing", value: formatNumber((statusCounts.QUEUED ?? 0) + (statusCounts.PARSING ?? 0) + (statusCounts.PROCESSING ?? 0)) },
-          { label: "Failed", value: formatNumber(statusCounts.FAILED ?? 0), tone: "danger" },
-          { label: "Collectors", value: `${formatNumber(sourceOptions.filter((s) => (s.connection_state ?? s.status) === "LIVE").length)} / ${formatNumber(sourceOptions.length)} live` },
-        ]}
-      />
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
+        <SparkKpi label="Jobs" value={formatNumber(jobs.data?.total ?? 0)} icon={Database} tone="blue" footnote="workspace total" />
+        <SparkKpi label="Complete" value={formatNumber(statusCounts.COMPLETE ?? 0)} icon={CheckCircle2} tone="mint" footnote="parsed and detected" />
+        <SparkKpi label="Processing" value={formatNumber(processingCount)} icon={Loader2} tone="amber" footnote="queued, parsing or detecting" />
+        <SparkKpi label="Failed" value={formatNumber(statusCounts.FAILED ?? 0)} icon={FileWarning} tone="rose" footnote="stored with error detail" />
+        <SparkKpi
+          label="Live collectors"
+          value={`${formatNumber(liveCollectors)} / ${formatNumber(sourceOptions.length)}`}
+          icon={Radio}
+          tone="accent"
+          footnote="connected of registered"
+        />
+      </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.02fr)_minmax(0,1fr)]">
         <Panel className="p-4 sm:p-5">
@@ -835,6 +877,27 @@ export function Ingestion() {
             <RefreshCw className={cn("h-3.5 w-3.5", jobs.isFetching && "animate-spin")} /> Refresh
           </button>
         </div>
+        {outcomeTotal ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/[0.05] px-4 py-2.5 sm:px-5">
+            <div className="flex h-1.5 min-w-[140px] flex-1 overflow-hidden rounded-full bg-white/[0.05]">
+              {outcomeEntries.map(([status, count]) => (
+                <div
+                  key={status}
+                  title={`${titleCase(status)}: ${count}`}
+                  style={{ width: `${(count / outcomeTotal) * 100}%`, background: STATUS_COLORS[status] ?? TONES.slate }}
+                />
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {outcomeEntries.map(([status, count]) => (
+                <span key={status} className="inline-flex items-center gap-1 text-[9.5px] text-slate-500">
+                  <span className="h-1 w-1 rounded-full" style={{ background: STATUS_COLORS[status] ?? TONES.slate }} />
+                  {titleCase(status)} <span className="font-mono tabular-nums text-slate-400">{formatNumber(count)}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {jobs.isError ? (
           <div className="p-4">
             <ErrorState message={jobs.error instanceof Error ? jobs.error.message : "Jobs could not be loaded."} retry={() => void jobs.refetch()} />
