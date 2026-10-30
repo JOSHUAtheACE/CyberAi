@@ -1,0 +1,12 @@
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+SQLAlchemy==2.1.6
+pydantic==2.13.5
+scikit-learn==1.9.1
+scipy==1.18.1
+numpy==2.5.1
+joblib==1.6.0
+httpx==0.28.1
+python-multipart==0.0.32
+python-dotenv==1.2.3
+maxminddb==3.2.0

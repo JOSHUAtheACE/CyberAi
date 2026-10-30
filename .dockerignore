@@ -1,0 +1,24 @@
+# build output / dependencies
+frontend/node_modules
+frontend/dist
+frontend/dev.log
+
+# local runtime state and secrets — never bake these into an image
+backend/data
+backend/models
+backend/storage
+backend/server.log
+backend/.venv
+**/__pycache__
+**/*.pyc
+
+# local env files
+.env
+.env.*
+!.env.example
+
+# repository metadata
+.git
+.gitignore
+docs
+README.md

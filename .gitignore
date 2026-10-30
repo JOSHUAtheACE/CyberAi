@@ -1,0 +1,45 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime data and generated artefacts
+backend/data/
+backend/models/
+backend/server.log
+backend/dev.log
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+backend/cj.txt
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/dev.log
+npm-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Coverage and temporary output
+coverage/
+htmlcov/
+*.tmp
